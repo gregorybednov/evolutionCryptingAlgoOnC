@@ -1,0 +1,16 @@
+# depslib dependency file v1.0
+1534866609 source:c:\users\Григорий Беднов\documents\crypting_on_c\crypting_core.c
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	"crypting_core.h"
+
+1534861115 c:\users\Григорий Беднов\documents\crypting_on_c\crypting_core.h
+
+1534861209 source:c:\users\Григорий Беднов\documents\crypting_on_c\main.c
+	<stdio.h>
+	"crypting_core.h"
+	<string.h>
+	<time.h>
+	<stdlib.h>
+
