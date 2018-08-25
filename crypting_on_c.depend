@@ -14,3 +14,17 @@
 	<time.h>
 	<stdlib.h>
 
+1535231181 source:c:\users\Григорий Беднов\documents\github\evolutioncryptingalgoonc\main.c
+	<stdio.h>
+	"crypting_core.h"
+	<string.h>
+	<time.h>
+	<stdlib.h>
+
+1535231043 c:\users\Григорий Беднов\documents\github\evolutioncryptingalgoonc\crypting_core.h
+
+1535230505 source:c:\users\Григорий Беднов\documents\github\evolutioncryptingalgoonc\crypting_core.c
+	<stdlib.h>
+	<string.h>
+	"crypting_core.h"
+

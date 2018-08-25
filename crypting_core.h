@@ -1,13 +1,8 @@
-#ifndef CRYPTING_CORE_H_INCLUDED
+﻿#ifndef CRYPTING_CORE_H_INCLUDED
 #define CRYPTING_CORE_H_INCLUDED
 
-// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-#ifndef CRYPTCORE_C_H_INCLUDED
-#define CRYPTCORE_C_H_INCLUDED
-
-int load_message_to_module(size_t length,unsigned char *byteMessage);
+int load_message_to_module(size_t length,unsigned char *message);
 
 /** Главная расшифровывающая функция. Возвращает указатель на строку Си с результатами.
 Возвращает NULL при любой неудаче.
@@ -20,31 +15,32 @@ cancel_previous_uncyphering=0 - сохранить внутри программ
 Используйте cancel...=1 до тех пор, пока самая последняя правка расшифровки человеком не будет сделана.
 
  **/
-char *Uncipher(int cancel_previous_unciphering);
+char* uncipher (int cancel_previous);
 
 /** Главная шифрующая функция. Возвращает указатель на создаваемый динамический массив unsigned char.
 По адресу length будет записано кол-во элементов в массиве.
 str - указатель на Си-строку, которую надо зашифровать.
 **/
-unsigned char *Cipher(size_t *length,char *str);
+unsigned char* cipher (char* str, size_t* bytelength);
 
 /** Сохраняет алфавит.
 
 Возвращает -1, если по каким-то причинам не удалось открыть файл и сделать запись.
 В случае успеха возвращает 0.
 **/
-int save_alphabet();
+int save_alphabet(char* file_name);
 
 /**
 Загружает алфавит с именем, описанным строкой по указателю name
 
 Возвращает 0, если успешно
-Возвращает -1, если ошибка
+Возвращает -1, если пустой файл
+Возвращает -2, если ошибка первых 4х символов
 **/
-int load_alphabet(char *name);
+int load_alphabet(char* name);
 
 ///Удаляет весь журнал правок
-void clearEdits();
+void erase_all_editlist();
 
 /**
 Загружает алфавит с именем, описанным строкой по указателю name
@@ -52,7 +48,7 @@ void clearEdits();
 Возвращает 0, если успешно
 Возвращает -1, если ошибка
 **/
-int load_dict(char *name);
+int load_dictionary(char* file_name, size_t* length);
 
 /** Необходимо использовать при закрытии работы с модулем
 **/
@@ -68,14 +64,12 @@ bitlength_symbol делится на 8 нацело. Иначе ошибка (о
 Возвращает 0 в случае успеха
 Возвращает -1 в случае любой ошибки
 **/
-int new_random_alphabet(char *name,size_t bytelength_symbol,size_t alphabet_length);
+int new_random_alphabet(char *name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count);
 
 ///Добавляет пользовательское прочтение символа
 ///Возвращает -1, если пользовательский символ вообще не входит в словарь
 ///Возвращает 1, если правка по этому номеру буквы в строке уже поступала (обновление буквы)
 ///Возвращает 0, если правок по этому номеру буквы в строке ещё не поступало (добавление буквы)
-int addEdit(size_t pos, char should_read_as);
-
-#endif // CRYPTCORE_C_H_INCLUDED
+int add_edit(size_t pos, char should_read_as);
 
 #endif // CRYPTING_CORE_H_INCLUDED

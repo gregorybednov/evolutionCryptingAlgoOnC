@@ -2,14 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "crypting_core.h"
-#define GROUPS_HASH 32
+#define IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT -2
+//IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT должно не являться номером какого-либо символа-цифры в таблице кодировки.
 
-struct _2ll_node{
-	struct _2ll_node *prev;
-	struct _2ll_node *next;
-	char val;
-	size_t intval;
-};
+#define DIGITS_FOR_DESCRIPTION 4
+//Сколько десятичных цифр требуется на описание файла словаря
 
 struct edit{
 	struct edit *next;
@@ -20,166 +17,202 @@ struct edit{
 size_t LENGTH_OF_ALPHABET=0;
 size_t LENGTH_OF_SYMBOL=0;
 
-unsigned char *alphabet;
-unsigned char *reserved_alphabet;
-char *fileName;
+unsigned char* alphabet;
+unsigned char* reserved_alphabet;
 int MUTATIONS;
-char *revdict;
+/*Раздел описаний, связанных со словарями*/
+struct dictnode {
+	int charval;
+	size_t intval;
+};
+struct dictnode* dict;
+int* revdict;
+size_t dictsize=0;
 
-struct _2ll_node *dict[GROUPS_HASH];
-struct edit *edits;
+/*Раздел описаний, связанных с правками*/
+struct editrecord {//тип "правка"
+	char read_as;
+	size_t pos;
+};
+struct editrecord* editlist;//указатель на дин. массив правок
+size_t editcapacity=0;//общая ёмкость дин.массива
+size_t editsize=0;//количество уже задействованных элементов
 
-unsigned char *message;
-size_t msg_length=0;
+/*Описание переменных, связанных с шифрованным сообщением*/
+unsigned char* msg;//указатель на дин. массив сообщения
+size_t msgsize=0;//количество шифросимволов в сообщении
 
-void randmutations(){
-	for (int i=0;i<MUTATIONS;i++){
-		size_t randQ=rand()%(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
-		unsigned char randX=rand()%(sizeof(unsigned char)*8);
-		alphabet[randQ]^=(unsigned char) (1<<(randX));
+void random_mutations(){
+	for (size_t x=0;x<MUTATIONS;x++){
+		size_t randQ=((size_t) rand())%(LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
+		size_t randX=((size_t) rand())%(sizeof(unsigned char)*8);
+		alphabet[randQ]^=(1<<randX);
+		reserved_alphabet[randQ]^=(1<<randX);
 	}
 }
 
-size_t theSamestLiter(unsigned char *symbol){
-	unsigned int *whatsthebest=calloc(LENGTH_OF_ALPHABET,sizeof(unsigned int));
-	if (whatsthebest==NULL){return -1;}
+size_t the_samest_letter(unsigned char* msgPtr){
+	//Постройка массива
+	size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));//значения следует хранить для возможной расширяемости модуля
+																	//функцией "вывести все возможные варианты"
+																	//(без этой функции, в общем-то, можно было бы обойтись 2 значениями:
+																	//лучшим найденным и нынешним)
 	for (size_t q=0;q<LENGTH_OF_ALPHABET;q++){
-		for (size_t x=0;x<(LENGTH_OF_SYMBOL);x++){
-			unsigned char m=1;
-			for (unsigned char x0=0;x0<8*sizeof(unsigned char);x0++){
-				if 	((symbol[x]&m)==((alphabet[q*LENGTH_OF_SYMBOL+x])&m)){
-					whatsthebest[q]++;
+		unsigned char results;
+
+		for (size_t x=0;x<LENGTH_OF_SYMBOL;x++){
+			results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);		//делаем XOR по uns char'у из алфавита и из сообщения
+			for (size_t m=0;m<sizeof(unsigned char)*8;m++){			//чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква
+				if (results%2){
+					whatstheworst[q]++;								//щелкаем счетчиком, если видим, что бит результата xor ненулевой
 				}
-				m<<=1;
+				results/=2;
 			}
 		}
 	}
-	unsigned int* bestBeg=whatsthebest;
-	unsigned int* biggest=bestBeg;
-	unsigned int* bestEnd=whatsthebest+LENGTH_OF_ALPHABET;
-	for (whatsthebest=bestBeg;whatsthebest<bestEnd;whatsthebest++){
-		if ((*biggest)<(*whatsthebest)){
-			biggest=whatsthebest;
+
+	//Поиск минимума
+	size_t* arrBegin=whatstheworst;
+	size_t* arrEnd=whatstheworst+LENGTH_OF_ALPHABET;
+	size_t* minimum=whatstheworst;
+	for (;whatstheworst<arrEnd;whatstheworst++){
+		if (*minimum>*whatstheworst){
+			minimum=whatstheworst;
 		}
 	}
-	whatsthebest=bestBeg;
-	size_t result=(biggest-bestBeg);
-	free(whatsthebest);
+	size_t result=minimum-arrBegin;
+	free(arrBegin);
 	return result;
 }
 
-unsigned char *Cipher(size_t *length,char *str){
-	if (str==NULL||length==NULL){
-		printf("\tstr OR length IS NULL!\n");
-		return NULL;
-	}
-	size_t strlenV=strlen(str);
-	size_t lng=strlenV*(LENGTH_OF_SYMBOL)+(size_t)(rand()%(LENGTH_OF_SYMBOL));
-	unsigned char *result=malloc(sizeof(unsigned char)*lng);
-	if (result==NULL){
-		printf("\tresult MALLOC NULL!\n");
-		return NULL;
-	}
-	for (size_t q=0;q<strlenV;q++){
-		for (size_t i=0;i<(LENGTH_OF_SYMBOL);i++){
-			struct _2ll_node *s=dict[str[q]%GROUPS_HASH];
-			struct _2ll_node *s0;
-			if (s!=NULL){
-				s0=s;
-				while ((s!=NULL)&&(s0->val!=str[q])){
-					s0=s;
-					s=s->next;
-				}
-				if (s0->val!=str[q]){
-					free(result);
-					printf("\tDOESN'T EXIST, NULL\n");
-					*length=0;
-					return NULL;
-				}
-			} else {
-				*length=0;
-				printf("\tDOESN'T EXIST, NULL\n");
-				free(result);
-				return NULL;
-			}
-			memcpy(result+q*(LENGTH_OF_SYMBOL)+i,(alphabet+s0->intval+i),LENGTH_OF_SYMBOL*sizeof(unsigned char));
+struct dictnode* dict_binary_search (int found_this_charval){
+	size_t left=0;
+	size_t right=dictsize;
+	size_t mid=(right+left)/2;
+	while ((left!=right) && ((dict+mid)->charval != found_this_charval)){
+		if ((dict+mid)->charval<found_this_charval){
+			left=mid+1;
+		} else {
+			right=mid;
 		}
-		randmutations();
+		mid=(right+left)/2;
 	}
-	char* resBegin=result;
-	char* resEnd=result+lng;
-	for (result=result+strlenV*LENGTH_OF_ALPHABET;result<resEnd;result++){
-		*result=(unsigned char) rand();
+	if ((dict+mid)->charval != found_this_charval){
+		return NULL;
+	} else {
+		return (dict+mid);
 	}
-	*length=sizeof(unsigned char)*lng;
-	return resBegin;
 }
 
-int load_message_to_module(size_t length,unsigned char *byteMessage){
-	free(message);
-	msg_length=length/(LENGTH_OF_SYMBOL)*(LENGTH_OF_SYMBOL);
-	printf("\tmessage malloc started\n",msg_length*sizeof(char));
-	message=(unsigned char*)malloc(msg_length*sizeof(char));//<<----- STOPPING CAN BE HERE!!!!!!!!!!
-	printf("\tmessage malloc completed...\n");
-	if (message==NULL){
-		printf("\tmessage MALLOC ERROR\n");
+int dict_comparator(const void* x1, const void* x2){
+	return  (((struct dictnode* )x1)->charval) - (((struct dictnode* )x2)->charval);
+}
+
+unsigned char* cipher (char* str, size_t* bytelength){
+	if (bytelength==NULL||str==NULL){
+		return NULL;
+	}
+	size_t strlenVal=strlen(str);
+	size_t sum_length=(strlenVal*LENGTH_OF_SYMBOL+rand()%LENGTH_OF_SYMBOL);
+	unsigned char* result=malloc(sum_length*sizeof(unsigned char));
+	if (result==NULL){
+		*bytelength=0;
+		return NULL;
+	}
+	for (size_t q=0;q<strlenVal*LENGTH_OF_SYMBOL;q+=LENGTH_OF_SYMBOL){
+		struct dictnode* whereIsDictC=dict_binary_search((int) str[q/LENGTH_OF_SYMBOL]);
+		if (whereIsDictC==NULL){
+			free(result);
+			*bytelength=0;
+			return NULL;
+		}
+		memcpy(result+q,alphabet+LENGTH_OF_SYMBOL*whereIsDictC->intval,LENGTH_OF_SYMBOL*sizeof(char));
+		random_mutations();
+	}
+	for (size_t q=strlenVal*LENGTH_OF_SYMBOL;q<sum_length;q++){
+		result[q]=(unsigned char) rand();
+	}
+	*bytelength=sum_length*sizeof(char);
+	return result;
+}
+
+int load_message_to_module(size_t bytelength,unsigned char *message){
+	free(msg);
+	bytelength=bytelength/(LENGTH_OF_SYMBOL)*(LENGTH_OF_SYMBOL);
+	msgsize=bytelength/sizeof(char);
+	msg=malloc(bytelength);
+	if (msg==NULL){
 		return -1;
 	}
-	memcpy(message,byteMessage,msg_length*sizeof(char));
+	memcpy(msg,message,bytelength);
 	return 0;
 }
 
-char *Uncipher(int cancel_previous_unciphering){
-	printf("\tWas I here?\n");
-	if (message==NULL){
-		return NULL;
-	}
-	printf("\tWas I here? msg_length=%u\n",msg_length);
+int edits_comparator (const void* x1, const void* x2){
+	return ((struct editrecord*)x1)->pos - ((struct editrecord*)x2)->pos;
+}
 
-	char *result=malloc(sizeof(char)*msg_length);
-	printf("\tWas I here? msg_length=%u\n",msg_length);
-	if (result==NULL){
+char* uncipher (int cancel_previous){
+	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL*sizeof(char))+1)*sizeof(char));
+	if (result==NULL||msg==NULL){
 		return NULL;
 	}
-	printf("\tMemCpy started\n");
-	if (cancel_previous_unciphering){
-		memcpy(alphabet,reserved_alphabet,sizeof(unsigned char)*LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
+	if (cancel_previous){
+		memcpy(reserved_alphabet,alphabet,sizeof(unsigned char)*LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
 	} else {
-		memcpy(reserved_alphabet,alphabet,sizeof(unsigned char)*LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
+		memcpy(alphabet,reserved_alphabet,sizeof(unsigned char)*LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
 	}
-	printf("\tMemCpy completed\n");
-	for (size_t i=0;i<msg_length;i++){
-		struct edit currEdit=*edits;
-		while ((currEdit.next!=NULL)&&(currEdit.pos!=i)){
-			currEdit=*(currEdit.next);
+	if (editlist==NULL){
+		for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
+			size_t num;
+			num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+			result[q]=revdict[num];
+			memcpy(alphabet+num,msg+q*LENGTH_OF_SYMBOL,LENGTH_OF_SYMBOL);
 		}
+	} else {
+		size_t editI=0;
 		size_t num;
-		if (currEdit.pos!=i){
-			struct _2ll_node currDict=*(dict[currEdit.read_as%GROUPS_HASH]);
-			while ((currEdit.read_as!=currDict.val)){
-					currDict=*(currDict.next);
+		qsort(editlist,editsize,sizeof(struct editrecord),edits_comparator);
+		for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
+			int flag=1;
+			if (flag){
+				if (((editlist+editI)->pos)==q && flag){
+					struct dictnode* whereIsIntval=dict_binary_search((editlist+editI)->read_as);
+					if (whereIsIntval==NULL){
+						free(result);
+						return NULL;
+					} else {
+						num=whereIsIntval->intval;
+					}
+					editI++;
+					if (editI>=editsize){
+						flag=0;
+					} else {
+						num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+					}
+				} else {
+					num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+				}
+			} else {
+				num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
 			}
-			result[i]=currDict.val;
-			num=currDict.intval;
-		} else {
-			num=theSamestLiter(message+i*LENGTH_OF_SYMBOL);
-			result[i]=revdict[num];
+			result[q]=revdict[num];
+			memcpy(alphabet+num,msg+q*LENGTH_OF_SYMBOL,LENGTH_OF_SYMBOL);
 		}
-		memcpy(alphabet+num*LENGTH_OF_SYMBOL,message+i*LENGTH_OF_SYMBOL,LENGTH_OF_SYMBOL);
 	}
-	result[msg_length+1]='\0';
+	result[msgsize/LENGTH_OF_SYMBOL]='\0';
 	return result;
 }
 
 ///0, если успешно
 ///-1, если файл не был открыт на запись
-int save_alphabet(){
+int save_alphabet(char* file_name){
 	FILE *fp;
-	if ((fp = fopen(fileName, "wb")) == NULL){
+	if ((fp = fopen(file_name, "wb")) == NULL){
 		return -1;
 	}
-	int ints[2]={LENGTH_OF_ALPHABET,LENGTH_OF_SYMBOL};
-	fwrite(ints, sizeof(int),2,fp);
+	int ints[3]={LENGTH_OF_ALPHABET,LENGTH_OF_SYMBOL,MUTATIONS};
+	fwrite(ints, sizeof(int),3,fp);
   	fwrite(alphabet, sizeof(unsigned char), LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET*sizeof(unsigned char), fp); // записать в файл содержимое буфера
 	fclose(fp);
 	return 0;
@@ -194,8 +227,8 @@ int load_alphabet(char *name){
 	if ((fp = fopen(name, "rb")) == NULL){
 		return -1;
 	}
-	size_t ints[2];
-	fread(&ints,sizeof(size_t),2,fp);
+	size_t ints[3];
+	fread(&ints,sizeof(size_t),3,fp);
 	if (ints[0]<=0){
 			fclose(fp);
 			return -1;
@@ -205,13 +238,13 @@ int load_alphabet(char *name){
 		free(alphabet);
 		free(reserved_alphabet);
 		LENGTH_OF_SYMBOL=ints[1];
+		MUTATIONS=ints[2];
 		alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
 		reserved_alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
 		if (alphabet==NULL || reserved_alphabet==NULL){
 			fclose(fp);
 			return -1;
 		}
-		printf("res_alph=%p\n",reserved_alphabet);
 		fread(alphabet,sizeof(unsigned char),LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL,fp);
 		memcpy(reserved_alphabet,alphabet,LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
 		fclose(fp);
@@ -222,122 +255,111 @@ int load_alphabet(char *name){
 	}
 }
 
-int load_dict(char *name){
-	FILE *fp;
-	fp = fopen(name, "rb");
-	if (fp != NULL){
-		for (size_t i=0;i<GROUPS_HASH;i++){
-			struct _2ll_node *s=dict[i];
-			if (s!=NULL){
-				while (s->next!=NULL){
-					struct _2ll_node *m=s->next;
-					free(s);
-					s=m;
-			}
-			}
-			dict[i]=NULL;
-		}
-		free(revdict);
-		size_t ints[1];
-		fread(&ints,sizeof(size_t),1,fp);
-		revdict=malloc(sizeof(char)*ints[0]);
-		char c;
-		for (size_t i=0;i<ints[0];i++){
-			c=getc(fp);
-			revdict[i]=c;
-			struct _2ll_node *s=dict[c%GROUPS_HASH];
-			struct _2ll_node *s0;
-			unsigned char flag=1;
-			if (s==NULL){
-				dict[c%GROUPS_HASH]=malloc(sizeof(struct _2ll_node));
-				dict[c%GROUPS_HASH]->prev=NULL;
-				dict[c%GROUPS_HASH]->next=NULL;
-				dict[c%GROUPS_HASH]->val=c;
-				dict[c%GROUPS_HASH]->intval=i;
-			} else {
-				while ((s!=NULL)&&(flag)){
-					flag=((s->val)!=c);
-					s0=s;
-					s=s->next;
-				}
-				if (s==NULL){
-					s=malloc(sizeof(struct _2ll_node));
-					if (s==NULL){fclose(fp);return -1;}
-					s->prev=s0;
-					s0->next=s;
-					s->next=NULL;
-					s->val=c;
-					s->intval=i;
-				} else {
-					return -1;
-				}
-			}
-		}
-
-		fclose(fp);
-		/*for (int i=0;i<GROUPS_HASH;i++){
-			printf("\n%d (%p): ",i,dict[i]);
-			struct _2ll_node *s=dict[i];
-			while (s!=NULL){
-				printf(" (%d,%c)",s->intval,s->val);
-				s=s->next;
-			}
-		}*/
-		return (int)ints[0];
-	} else {
-		return -1;
-	}
+int comparator(const void* x1, const void* x2){
+	return  (((struct dictnode* )x1)->charval) - (((struct dictnode* )x2)->charval);
 }
 
-
-void clearEdits(){
-	struct edit *s=edits;
-	if (edits!=NULL){
-		struct edit *v=s->next;
-		while (v!=NULL){
-			free(s);
-			s=v;
-			v=v->next;
-		}
-		free(s);
+int load_dictionary(char* file_name, size_t* length){
+	FILE* fp;
+	fp=fopen(file_name,"r");
+	int number[DIGITS_FOR_DESCRIPTION];
+	for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
+		number[t]=getc(fp);
 	}
+	size_t size_of_dict=0;
+	for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
+		switch(number[t]){//жертва во имя переносимости: таблицы кодировок никак не ограничены тем, что '0'+1 это обязательно '1'
+			case '0':
+				break;
+			case '1':
+				size_of_dict+=1;
+				break;
+			case '2':
+				size_of_dict+=2;
+				break;
+			case '3':
+				size_of_dict+=3;
+				break;
+			case '4':
+				size_of_dict+=4;
+				break;
+			case '5':
+				size_of_dict+=5;
+				break;
+			case '6':
+				size_of_dict+=6;
+				break;
+			case '7':
+				size_of_dict+=7;
+				break;
+			case '8':
+				size_of_dict+=8;
+				break;
+			case '9':
+				size_of_dict+=9;
+				break;
+			default:
+				fclose(fp);
+				return -2;//ошибка: первые 4 символа не оказались цифрами
+				break;
+		}
+		size_of_dict*=10;//если мы всё ещё здесь, значит, результат можно смело домножать на 10.
+	}
+	size_of_dict/=10;//последнее смещение было лишним
+	dict=malloc(size_of_dict*sizeof(struct dictnode));
+	if (dict==NULL){
+		fclose(fp);
+		return -3;//ошибка выеделения памяти
+	}
+	revdict=malloc(size_of_dict*sizeof(int));
+	if (revdict==NULL){
+		fclose(fp);
+		return -3;//ошибка выеделения памяти
+	}
+	for (size_t t=0;t<size_of_dict;t++){
+		(dict+t)->charval=fgetc(fp);
+		(dict+t)->intval=t;
+		*(revdict+t)=(dict+t)->charval;
+	}
+	dictsize=size_of_dict;
+	qsort(dict,dictsize,sizeof(struct dictnode),comparator);
+	fclose(fp);
+	*length=size_of_dict;
+	return 0;
+}
+
+void erase_all_editlist(){
+	free(editlist);
+	editcapacity=0;
+	editsize=0;
 }
 
 void end(){
-	printf("\talphabet is free? ");
 	free(alphabet);
-	printf("completed.\n\treserved alphabet is free? ");
-	free(reserved_alphabet);//<<----- STOPPING CAN BE HERE!!!!!!!!!!!!!!!
-	printf("completed.\n\t\trevdict is free? ");
+	free(reserved_alphabet);
+	alphabet=NULL;
+	reserved_alphabet=NULL;
+	LENGTH_OF_ALPHABET=0;
+	LENGTH_OF_SYMBOL=0;
+	MUTATIONS=0;
+
+	free(dict);
 	free(revdict);
-	printf("completed.\n\t\tmessage is free? ");
-	free(message);
-	printf("\n\tcomplted.\n");
-	for (size_t i=0;i<GROUPS_HASH;i++){
-		struct _2ll_node *s=(dict[i]);
-		printf("%u ",i);
-		struct _2ll_node *s0=s;
-		while (1){
-			s0=s0->next;
-			free(s);
-			s=s0;
-			if (s0!=NULL){
-					s0=s0->next;
-			} else {
-				break;
-			}
-		}
-		dict[i]=NULL;
-	}
-	free(fileName);
-	clearEdits();
+	dictsize=0;
+
+	free(msg);
+	msgsize=0;
+
+	free(editlist);
+	editcapacity=0;
+	editsize=0;
 }
 
-int new_random_alphabet(char *name,size_t bytelength_symbol,size_t alphabet_length){
+int new_random_alphabet(char *name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count){
 	FILE *fp=fopen(name,"wb");
 	if (fp != NULL){
-		int ints[2]={alphabet_length,bytelength_symbol};
-		fwrite(ints, sizeof(int),2,fp);
+		int ints[3]={alphabet_length,bytelength_symbol,mutations_count};
+		fwrite(ints, sizeof(int),3,fp);
 		unsigned char* random_alphabet=malloc(alphabet_length*bytelength_symbol*sizeof(unsigned char));
 		if (random_alphabet==NULL){
 			fclose(fp);
@@ -358,35 +380,31 @@ int new_random_alphabet(char *name,size_t bytelength_symbol,size_t alphabet_leng
 	}
 }
 
-int addEdit(size_t pos, char should_read_as){
-	struct _2ll_node s=*(dict[should_read_as%GROUPS_HASH]);
-	while ((s.next!=NULL)&&(s.val!=should_read_as)){
-		s=*(s.next);
-	}
-	if (s.val!=should_read_as){
-		return -1;
-	}
-	struct edit *m=edits;
-	if (m==NULL){
-		edits=malloc(sizeof(struct edit));
-		if (edits==NULL){return -1;}
-		edits->next=NULL;
-		edits->pos=pos;
-		edits->read_as=should_read_as;
-	} else {
-		while ((m->next!=NULL)&&(m->pos!=pos)){
-			m=m->next;
-		}
-		if (m->pos==pos){
-			m->read_as=should_read_as;
-			return 1;
+int add_edit(size_t pos, char should_read_as){
+	if (editcapacity){
+		if (editsize==editcapacity){
+			editlist=realloc(editlist,sizeof(struct editrecord)*editcapacity*2);
+			if (editlist==NULL){
+				return -1;
+			}
+			editcapacity*=2;
+			(editlist+editsize)->pos=pos;
+			(editlist+editsize)->read_as=should_read_as;
+			editsize++;
 		} else {
-			struct edit *m0=malloc(sizeof(struct edit));
-			if (m0==NULL){return -1;}
-			m->next=m0;
-			m0->pos=pos;
-			m0->read_as=should_read_as;
+			(editlist+editsize)->pos=pos;
+			(editlist+editsize)->read_as=should_read_as;
+			editsize++;
 		}
+	} else {
+		editlist=malloc(sizeof(struct editrecord));
+		if (editlist==NULL){
+			return -1;
+		}
+		editcapacity++;
+		editlist->pos=pos;
+		editlist->read_as=should_read_as;
+		editsize++;
 	}
 	return 0;
 }
