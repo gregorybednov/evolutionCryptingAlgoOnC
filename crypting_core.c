@@ -306,11 +306,14 @@ int load_dictionary(char* file_name, size_t* length){
 		size_of_dict*=10;//если мы всё ещё здесь, значит, результат можно смело домножать на 10.
 	}
 	size_of_dict/=10;//последнее смещение было лишним
+	free(dict);
+	dictsize=0;
 	dict=malloc(size_of_dict*sizeof(struct dictnode));
 	if (dict==NULL){
 		fclose(fp);
 		return -3;//ошибка выеделения памяти
 	}
+	free(revdict);
 	revdict=malloc(size_of_dict*sizeof(int));
 	if (revdict==NULL){
 		fclose(fp);
