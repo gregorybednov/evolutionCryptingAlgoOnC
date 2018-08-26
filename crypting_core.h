@@ -37,7 +37,7 @@ int save_alphabet(char* file_name);
 Возвращает -1, если пустой файл
 Возвращает -2, если ошибка первых 4х символов
 **/
-int load_alphabet(char* name);
+int load_alphabet(char* file_name);
 
 ///Удаляет весь журнал правок
 void erase_all_editlist();
@@ -64,7 +64,7 @@ bitlength_symbol делится на 8 нацело. Иначе ошибка (о
 Возвращает 0 в случае успеха
 Возвращает -1 в случае любой ошибки
 **/
-int new_random_alphabet(char *name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count);
+int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count);
 
 ///Добавляет пользовательское прочтение символа
 ///Возвращает -1, если пользовательский символ вообще не входит в словарь

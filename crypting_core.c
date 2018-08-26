@@ -8,24 +8,20 @@
 #define DIGITS_FOR_DESCRIPTION 4
 //Сколько десятичных цифр требуется на описание файла словаря
 
-struct edit{
-	struct edit *next;
-	size_t pos;
-	char read_as;
-};
-
+/*ОПИСАНИЯ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ И ТИПОВ МОДУЛЯ*/
+/*Описания, связанные с алфавитами*/
 size_t LENGTH_OF_ALPHABET=0;
 size_t LENGTH_OF_SYMBOL=0;
-
 unsigned char* alphabet;
 unsigned char* reserved_alphabet;
-int MUTATIONS;
-/*Раздел описаний, связанных со словарями*/
-struct dictnode {
+size_t MUTATIONS;
+
+/*Описаний, связанные со словарями*/
+struct dictrecord {
 	int charval;
 	size_t intval;
 };
-struct dictnode* dict;
+struct dictrecord* dict;
 int* revdict;
 size_t dictsize=0;
 
@@ -42,6 +38,7 @@ size_t editsize=0;//количество уже задействованных �
 unsigned char* msg;//указатель на дин. массив сообщения
 size_t msgsize=0;//количество шифросимволов в сообщении
 
+///делает MUTATIONS мутаций в алфавите
 void random_mutations(){
 	for (size_t x=0;x<MUTATIONS;x++){
 		size_t randQ=((size_t) rand())%(LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
@@ -51,6 +48,7 @@ void random_mutations(){
 	}
 }
 
+///возвращает номер (начиная с 0) наиболее подходящей по битам буквы
 size_t the_samest_letter(unsigned char* msgPtr){
 	//Постройка массива
 	size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));//значения следует хранить для возможной расширяемости модуля
@@ -85,7 +83,8 @@ size_t the_samest_letter(unsigned char* msgPtr){
 	return result;
 }
 
-struct dictnode* dict_binary_search (int found_this_charval){
+///для бинарного поиска по отсортированному словарному "вектору"
+struct dictrecord* dict_binary_search (int found_this_charval){
 	size_t left=0;
 	size_t right=dictsize;
 	size_t mid=(right+left)/2;
@@ -104,34 +103,71 @@ struct dictnode* dict_binary_search (int found_this_charval){
 	}
 }
 
+///функция для qsort
 int dict_comparator(const void* x1, const void* x2){
-	return  (((struct dictnode* )x1)->charval) - (((struct dictnode* )x2)->charval);
+	return  (((struct dictrecord* )x1)->charval) - (((struct dictrecord* )x2)->charval);
+}
+
+///возвращает общее количество литер str, для которых есть соответствие в словаре.
+///Кроме того, создает дин. массив ("векторного" исполнения), в который последовательно сохранён
+///каждый УСПЕШНЫЙ результат по всякому символу (т.е. все обращения к словарю можно и достаточно провести тут,
+///а не в самой функции шифрования), а потом обращаться к созданным заранее результатам по адресу dict_intval_results
+
+size_t* new_dict_intval_results (char* str, size_t* size){
+	size_t arrCapacity=0;
+	size_t arrSize=0;
+	size_t* dict_intval_results=malloc(1*sizeof(size_t));
+	if (dict_intval_results==NULL){
+			return NULL;//если место не выделено, то функции нет особого смысла дальше работать: программисту не будет
+			//удобно рассматривать все возможные случаи, скорее всего он просто начнет обращаться с dict_intval_results
+	}
+	arrCapacity=1;
+	char* strI=str;
+	while ((*strI)!='\0'){
+		struct dictrecord* whereIsDictC=dict_binary_search((int) *strI);
+		strI++;
+		if (whereIsDictC!=NULL){
+			if (arrSize==arrCapacity){
+				dict_intval_results=realloc(dict_intval_results,sizeof(size_t)*arrCapacity*2);
+				arrCapacity*=2;
+			}
+			dict_intval_results[arrSize]=whereIsDictC->intval;
+			arrSize++;
+		}
+	}
+	dict_intval_results=realloc(dict_intval_results,sizeof(size_t)*arrSize);
+	*size=arrSize;
+	return dict_intval_results;
 }
 
 unsigned char* cipher (char* str, size_t* bytelength){
 	if (bytelength==NULL||str==NULL){
 		return NULL;
 	}
-	size_t strlenVal=strlen(str);
-	size_t sum_length=(strlenVal*LENGTH_OF_SYMBOL+rand()%LENGTH_OF_SYMBOL);
+
+	size_t res_size;
+	size_t* dict_intvals=new_dict_intval_results(str,&res_size);
+	if (dict_intvals==NULL){
+		*bytelength=0;
+		return NULL;
+	}
+
+	size_t sum_length=(res_size*LENGTH_OF_SYMBOL+rand()%LENGTH_OF_SYMBOL);
 	unsigned char* result=malloc(sum_length*sizeof(unsigned char));
 	if (result==NULL){
 		*bytelength=0;
 		return NULL;
 	}
-	for (size_t q=0;q<strlenVal*LENGTH_OF_SYMBOL;q+=LENGTH_OF_SYMBOL){
-		struct dictnode* whereIsDictC=dict_binary_search((int) str[q/LENGTH_OF_SYMBOL]);
-		if (whereIsDictC==NULL){
-			free(result);
-			*bytelength=0;
-			return NULL;
-		}
-		memcpy(result+q,alphabet+LENGTH_OF_SYMBOL*whereIsDictC->intval,LENGTH_OF_SYMBOL*sizeof(char));
+
+	for (size_t q=0;q<(res_size);q++){
+		memcpy(result+q*LENGTH_OF_SYMBOL,alphabet+LENGTH_OF_SYMBOL*dict_intvals[q],LENGTH_OF_SYMBOL*sizeof(char));
 		random_mutations();
 	}
-	for (size_t q=strlenVal*LENGTH_OF_SYMBOL;q<sum_length;q++){
+
+	for (size_t q=res_size*LENGTH_OF_SYMBOL;q<sum_length;q++){
 		result[q]=(unsigned char) rand();
 	}
+
 	*bytelength=sum_length*sizeof(char);
 	return result;
 }
@@ -177,7 +213,7 @@ char* uncipher (int cancel_previous){
 			int flag=1;
 			if (flag){
 				if (((editlist+editI)->pos)==q && flag){
-					struct dictnode* whereIsIntval=dict_binary_search((editlist+editI)->read_as);
+					struct dictrecord* whereIsIntval=dict_binary_search((editlist+editI)->read_as);
 					if (whereIsIntval==NULL){
 						free(result);
 						return NULL;
@@ -222,9 +258,9 @@ int save_alphabet(char* file_name){
 ///-1, если файл по каким-то причинам не был открыт
 ///-2, если в файле неверное значение длины алфавита (файл с ошибкой)
 ///-3, если в файле неверное значение длины символа (файл с ошибкой)
-int load_alphabet(char *name){
+int load_alphabet(char *file_name){
 	FILE *fp;
-	if ((fp = fopen(name, "rb")) == NULL){
+	if ((fp = fopen(file_name, "rb")) == NULL){
 		return -1;
 	}
 	size_t ints[3];
@@ -256,7 +292,7 @@ int load_alphabet(char *name){
 }
 
 int comparator(const void* x1, const void* x2){
-	return  (((struct dictnode* )x1)->charval) - (((struct dictnode* )x2)->charval);
+	return  (((struct dictrecord* )x1)->charval) - (((struct dictrecord* )x2)->charval);
 }
 
 int load_dictionary(char* file_name, size_t* length){
@@ -308,7 +344,7 @@ int load_dictionary(char* file_name, size_t* length){
 	size_of_dict/=10;//последнее смещение было лишним
 	free(dict);
 	dictsize=0;
-	dict=malloc(size_of_dict*sizeof(struct dictnode));
+	dict=malloc(size_of_dict*sizeof(struct dictrecord));
 	if (dict==NULL){
 		fclose(fp);
 		return -3;//ошибка выеделения памяти
@@ -325,7 +361,7 @@ int load_dictionary(char* file_name, size_t* length){
 		*(revdict+t)=(dict+t)->charval;
 	}
 	dictsize=size_of_dict;
-	qsort(dict,dictsize,sizeof(struct dictnode),comparator);
+	qsort(dict,dictsize,sizeof(struct dictrecord),comparator);
 	fclose(fp);
 	*length=size_of_dict;
 	return 0;
@@ -358,8 +394,8 @@ void end(){
 	editsize=0;
 }
 
-int new_random_alphabet(char *name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count){
-	FILE *fp=fopen(name,"wb");
+int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count){
+	FILE *fp=fopen(file_name,"wb");
 	if (fp != NULL){
 		int ints[3]={alphabet_length,bytelength_symbol,mutations_count};
 		fwrite(ints, sizeof(int),3,fp);
