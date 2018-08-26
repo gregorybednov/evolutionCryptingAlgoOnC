@@ -9,7 +9,7 @@ int main(){
 	char s[]="Testing message for you and this program";
 	size_t y;
 	load_dictionary("eng2.dict",&y);
-	new_random_alphabet("new.balph",4,y,0);//мутации выставлены в ноль, можно изменять.
+	new_random_alphabet("new.balph",6,y,0);//мутации выставлены в ноль, можно изменять.
 	load_alphabet("new.balph");
 	size_t t;
 	unsigned char* msg=cipher(s,&t);

@@ -1,4 +1,5 @@
 ﻿#include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include "crypting_core.h"
@@ -36,7 +37,7 @@ size_t editsize=0;//количество уже задействованных �
 
 /*Описание переменных, связанных с шифрованным сообщением*/
 unsigned char* msg;//указатель на дин. массив сообщения
-size_t msgsize=0;//количество шифросимволов в сообщении
+size_t msgsize=0;//количество шифросимволов в сообщении.
 
 ///делает MUTATIONS мутаций в алфавите
 void random_mutations(){
@@ -49,12 +50,15 @@ void random_mutations(){
 }
 
 ///возвращает номер (начиная с 0) наиболее подходящей по битам буквы
-size_t the_samest_letter(unsigned char* msgPtr){
+ptrdiff_t the_samest_letter(unsigned char* msgPtr){
 	//Постройка массива
 	size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));//значения следует хранить для возможной расширяемости модуля
 																	//функцией "вывести все возможные варианты"
 																	//(без этой функции, в общем-то, можно было бы обойтись 2 значениями:
 																	//лучшим найденным и нынешним)
+	if (whatstheworst==NULL){
+		return -1;
+	}
 	for (size_t q=0;q<LENGTH_OF_ALPHABET;q++){
 		unsigned char results;
 
@@ -78,7 +82,7 @@ size_t the_samest_letter(unsigned char* msgPtr){
 			minimum=whatstheworst;
 		}
 	}
-	size_t result=minimum-arrBegin;
+	ptrdiff_t result=minimum-arrBegin;
 	free(arrBegin);
 	return result;
 }
@@ -128,14 +132,22 @@ size_t* new_dict_intval_results (char* str, size_t* size){
 		strI++;
 		if (whereIsDictC!=NULL){
 			if (arrSize==arrCapacity){
-				dict_intval_results=realloc(dict_intval_results,sizeof(size_t)*arrCapacity*2);
+				size_t* temporary=realloc(dict_intval_results,sizeof(size_t)*arrCapacity*2);
+				if (temporary==NULL){
+					free(dict_intval_results);
+					return NULL;
+				}
+				dict_intval_results=temporary;
 				arrCapacity*=2;
 			}
 			dict_intval_results[arrSize]=whereIsDictC->intval;
 			arrSize++;
 		}
 	}
-	dict_intval_results=realloc(dict_intval_results,sizeof(size_t)*arrSize);
+	size_t* temporary=realloc(dict_intval_results,sizeof(size_t)*arrSize);
+	if (temporary!=NULL){
+		dict_intval_results=temporary;
+	}
 	*size=arrSize;
 	return dict_intval_results;
 }
@@ -152,6 +164,7 @@ unsigned char* cipher (char* str, size_t* bytelength){
 		return NULL;
 	}
 
+
 	size_t sum_length=(res_size*LENGTH_OF_SYMBOL+rand()%LENGTH_OF_SYMBOL);
 	unsigned char* result=malloc(sum_length*sizeof(unsigned char));
 	if (result==NULL){
@@ -163,6 +176,7 @@ unsigned char* cipher (char* str, size_t* bytelength){
 		memcpy(result+q*LENGTH_OF_SYMBOL,alphabet+LENGTH_OF_SYMBOL*dict_intvals[q],LENGTH_OF_SYMBOL*sizeof(char));
 		random_mutations();
 	}
+	free(dict_intvals);
 
 	for (size_t q=res_size*LENGTH_OF_SYMBOL;q<sum_length;q++){
 		result[q]=(unsigned char) rand();
@@ -185,12 +199,19 @@ int load_message_to_module(size_t bytelength,unsigned char *message){
 }
 
 int edits_comparator (const void* x1, const void* x2){
-	return ((struct editrecord*)x1)->pos - ((struct editrecord*)x2)->pos;
+	if ((((struct editrecord*)x1)->pos)>((struct editrecord*)x2)->pos){
+		return 1;
+	}
+	if ((((struct editrecord*)x1)->pos)==((struct editrecord*)x2)->pos){
+		return 0;
+	}
+	return  -1;
 }
 
 char* uncipher (int cancel_previous){
 	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL*sizeof(char))+1)*sizeof(char));
-	if (result==NULL||msg==NULL){
+	if ((result==NULL)||(msg==NULL)){
+		free(result);
 		return NULL;
 	}
 	if (cancel_previous){
@@ -208,9 +229,9 @@ char* uncipher (int cancel_previous){
 	} else {
 		size_t editI=0;
 		size_t num;
+        int flag=1;
 		qsort(editlist,editsize,sizeof(struct editrecord),edits_comparator);
 		for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
-			int flag=1;
 			if (flag){
 				if (((editlist+editI)->pos)==q && flag){
 					struct dictrecord* whereIsIntval=dict_binary_search((editlist+editI)->read_as);
@@ -223,8 +244,6 @@ char* uncipher (int cancel_previous){
 					editI++;
 					if (editI>=editsize){
 						flag=0;
-					} else {
-						num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
 					}
 				} else {
 					num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
@@ -291,13 +310,12 @@ int load_alphabet(char *file_name){
 	}
 }
 
-int comparator(const void* x1, const void* x2){
-	return  (((struct dictrecord* )x1)->charval) - (((struct dictrecord* )x2)->charval);
-}
-
 int load_dictionary(char* file_name, size_t* length){
 	FILE* fp;
 	fp=fopen(file_name,"r");
+	if (fp==NULL){
+		return -1;
+	}
 	int number[DIGITS_FOR_DESCRIPTION];
 	for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
 		number[t]=getc(fp);
@@ -361,7 +379,7 @@ int load_dictionary(char* file_name, size_t* length){
 		*(revdict+t)=(dict+t)->charval;
 	}
 	dictsize=size_of_dict;
-	qsort(dict,dictsize,sizeof(struct dictrecord),comparator);
+	qsort(dict,dictsize,sizeof(struct dictrecord),dict_comparator);
 	fclose(fp);
 	*length=size_of_dict;
 	return 0;
@@ -422,10 +440,12 @@ int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabe
 int add_edit(size_t pos, char should_read_as){
 	if (editcapacity){
 		if (editsize==editcapacity){
-			editlist=realloc(editlist,sizeof(struct editrecord)*editcapacity*2);
-			if (editlist==NULL){
+			struct editrecord* temporary=realloc(editlist,sizeof(struct editrecord)*editcapacity*2);
+			if (temporary==NULL){
+				free(editlist);
 				return -1;
 			}
+			editlist=temporary;
 			editcapacity*=2;
 			(editlist+editsize)->pos=pos;
 			(editlist+editsize)->read_as=should_read_as;
