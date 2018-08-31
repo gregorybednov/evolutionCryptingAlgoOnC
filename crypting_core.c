@@ -2,12 +2,13 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "crypting_core.h"
 #define IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT -2
-//IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT должно не являться номером какого-либо символа-цифры в таблице кодировки.
+/*IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT должно не являться номером какого-либо символа-цифры в таблице кодировки.*/
 
 #define DIGITS_FOR_DESCRIPTION 4
-//Сколько десятичных цифр требуется на описание файла словаря
+/*Сколько десятичных цифр требуется на описание файла словаря*/
 
 /*ОПИСАНИЯ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ И ТИПОВ МОДУЛЯ*/
 /*Описания, связанные с алфавитами*/
@@ -27,19 +28,19 @@ int* revdict;
 size_t dictsize=0;
 
 /*Раздел описаний, связанных с правками*/
-struct editrecord {//тип "правка"
+struct editrecord {/*тип "правка"*/
 	char read_as;
 	size_t pos;
 };
-struct editrecord* editlist;//указатель на дин. массив правок
-size_t editcapacity=0;//общая ёмкость дин.массива
-size_t editsize=0;//количество уже задействованных элементов
+struct editrecord* editlist;/*указатель на дин. массив правок*/
+size_t editcapacity=0;/*общая ёмкость дин.массива*/
+size_t editsize=0;/*количество уже задействованных элементов*/
 
 /*Описание переменных, связанных с шифрованным сообщением*/
-unsigned char* msg;//указатель на дин. массив сообщения
-size_t msgsize=0;//количество шифросимволов в сообщении.
+unsigned char* msg;/*указатель на дин. массив сообщения*/
+size_t msgsize=0;/*количество шифросимволов в сообщении.*/
 
-///делает MUTATIONS мутаций в алфавите
+/*делает MUTATIONS мутаций в алфавите*/
 void random_mutations(){
 	for (size_t x=0;x<MUTATIONS;x++){
 		size_t randQ=((size_t) rand())%(LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
@@ -49,31 +50,29 @@ void random_mutations(){
 	}
 }
 
-///возвращает номер (начиная с 0) наиболее подходящей по битам буквы
+/*возвращает номер (начиная с 0) наиболее подходящей по битам буквы*/
 ptrdiff_t the_samest_letter(unsigned char* msgPtr){
-	//Постройка массива
-	size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));//значения следует хранить для возможной расширяемости модуля
-																	//функцией "вывести все возможные варианты"
-																	//(без этой функции, в общем-то, можно было бы обойтись 2 значениями:
-																	//лучшим найденным и нынешним)
+	/*Постройка массива*/
+	size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));/*значения следует хранить для возможной расширяемости модуля
+функцией "вывести все возможные варианты" (без этой функции, в общем-то, можно было бы обойтись 2 значениями: лучшим найденным и нынешним) */
 	if (whatstheworst==NULL){
 		return -1;
 	}
 	for (size_t q=0;q<LENGTH_OF_ALPHABET;q++){
 		unsigned char results;
-
 		for (size_t x=0;x<LENGTH_OF_SYMBOL;x++){
-			results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);		//делаем XOR по uns char'у из алфавита и из сообщения
-			for (size_t m=0;m<CHAR_BIT;m++){			//чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква
+			results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);/*делаем XOR по uns char'у из алфавита и из сообщения
+(чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква)*/
+			for (size_t m=0;m<CHAR_BIT;m++){
 				if (results%2){
-					whatstheworst[q]++;								//щелкаем счетчиком, если видим, что бит результата xor ненулевой
+					whatstheworst[q]++;/*щелкаем счетчиком, если видим, что бит результата xor ненулевой*/
 				}
 				results/=2;
 			}
 		}
 	}
 
-	//Поиск минимума
+	/*Поиск минимума*/
 	size_t* arrBegin=whatstheworst;
 	size_t* arrEnd=whatstheworst+LENGTH_OF_ALPHABET;
 	size_t* minimum=whatstheworst;
@@ -87,7 +86,7 @@ ptrdiff_t the_samest_letter(unsigned char* msgPtr){
 	return result;
 }
 
-///для бинарного поиска по отсортированному словарному "вектору"
+/*для бинарного поиска по отсортированному словарному "вектору"*/
 struct dictrecord* dict_binary_search (int found_this_charval){
 	size_t left=0;
 	size_t right=dictsize;
@@ -107,23 +106,23 @@ struct dictrecord* dict_binary_search (int found_this_charval){
 	}
 }
 
-///функция для qsort
+/*функция для qsort*/
 int dict_comparator(const void* x1, const void* x2){
 	return  (((struct dictrecord* )x1)->charval) - (((struct dictrecord* )x2)->charval);
 }
 
-///возвращает общее количество литер str, для которых есть соответствие в словаре.
-///Кроме того, создает дин. массив ("векторного" исполнения), в который последовательно сохранён
-///каждый УСПЕШНЫЙ результат по всякому символу (т.е. все обращения к словарю можно и достаточно провести тут,
-///а не в самой функции шифрования), а потом обращаться к созданным заранее результатам по адресу dict_intval_results
-
+/*возвращает общее количество литер str, для которых есть соответствие в словаре.
+Кроме того, создает дин. массив ("векторного" исполнения), в который последовательно сохранён
+каждый УСПЕШНЫЙ результат по всякому символу (т.е. все обращения к словарю можно и достаточно провести тут,
+а не в самой функции шифрования), а потом обращаться к созданным заранее результатам по адресу dict_intval_results
+*/
 size_t* new_dict_intval_results (char* str, size_t* size){
 	size_t arrCapacity=0;
 	size_t arrSize=0;
 	size_t* dict_intval_results=malloc(1*sizeof(size_t));
 	if (dict_intval_results==NULL){
-			return NULL;//если место не выделено, то функции нет особого смысла дальше работать: программисту не будет
-			//удобно рассматривать все возможные случаи, скорее всего он просто начнет обращаться с dict_intval_results
+			return NULL;/*если место не выделено, то функции нет особого смысла дальше работать: программисту не будет
+			удобно рассматривать все возможные случаи, скорее всего он просто начнет обращаться с dict_intval_results*/
 	}
 	arrCapacity=1;
 	char* strI=str;
@@ -205,11 +204,11 @@ int edits_comparator (const void* x1, const void* x2){
 	if ((((struct editrecord*)x1)->pos)==((struct editrecord*)x2)->pos){
 		return 0;
 	}
-	return  -1;
+	return -1;
 }
 
 char* uncipher (int cancel_previous){
-	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL+1));
+	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL+1)));
 	if ((result==NULL)||(msg==NULL)){
 		free(result);
 		return NULL;
@@ -259,24 +258,24 @@ char* uncipher (int cancel_previous){
 	return result;
 }
 
-///0, если успешно
-///-1, если файл не был открыт на запись
-int save_alphabet(char* file_name){
+/*0, если успешно
+-1, если файл не был открыт на запись*/
+int save_alphabet(char* file_name) {
 	FILE *fp;
 	if ((fp = fopen(file_name, "wb")) == NULL){
 		return -1;
 	}
 	int ints[3]={LENGTH_OF_ALPHABET,LENGTH_OF_SYMBOL,MUTATIONS};
 	fwrite(ints, sizeof(int),3,fp);
-  	fwrite(alphabet, 1, LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET, fp); // записать в файл содержимое буфера
+  	fwrite(alphabet, 1, LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET, fp); /*записать в файл содержимое буфера*/
 	fclose(fp);
 	return 0;
 }
 
-///0, если успешно
-///-1, если файл по каким-то причинам не был открыт
-///-2, если в файле неверное значение длины алфавита (файл с ошибкой)
-///-3, если в файле неверное значение длины символа (файл с ошибкой)
+/*0, если успешно
+-1, если файл по каким-то причинам не был открыт
+-2, если в файле неверное значение длины алфавита (файл с ошибкой)
+-3, если в файле неверное значение длины символа (файл с ошибкой)*/
 int load_alphabet(char *file_name){
 	FILE *fp;
 	if ((fp = fopen(file_name, "rb")) == NULL){
@@ -322,7 +321,7 @@ int load_dictionary(char* file_name, size_t* length){
 	}
 	size_t size_of_dict=0;
 	for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
-		switch(number[t]){//жертва во имя переносимости: таблицы кодировок никак не ограничены тем, что '0'+1 это обязательно '1'
+		switch(number[t]){/*жертва во имя переносимости: таблицы кодировок никак не ограничены тем, что '0'+1 это обязательно '1'*/
 			case '0':
 				break;
 			case '1':
@@ -354,24 +353,24 @@ int load_dictionary(char* file_name, size_t* length){
 				break;
 			default:
 				fclose(fp);
-				return -2;//ошибка: первые 4 символа не оказались цифрами
+				return -2;/*ошибка: первые 4 символа не оказались цифрами*/
 				break;
 		}
-		size_of_dict*=10;//если мы всё ещё здесь, значит, результат можно смело домножать на 10.
+		size_of_dict*=10;/*если мы всё ещё здесь, значит, результат можно смело домножать на 10.*/
 	}
-	size_of_dict/=10;//последнее смещение было лишним
+	size_of_dict/=10;/*последнее смещение было лишним*/
 	free(dict);
 	dictsize=0;
 	dict=malloc(size_of_dict*sizeof(struct dictrecord));
 	if (dict==NULL){
 		fclose(fp);
-		return -3;//ошибка выеделения памяти
+		return -3;/*ошибка выделения памяти*/
 	}
 	free(revdict);
 	revdict=malloc(size_of_dict*sizeof(int));
 	if (revdict==NULL){
 		fclose(fp);
-		return -3;//ошибка выеделения памяти
+		return -3;/*ошибка выделения памяти*/
 	}
 	for (size_t t=0;t<size_of_dict;t++){
 		(dict+t)->charval=fgetc(fp);
