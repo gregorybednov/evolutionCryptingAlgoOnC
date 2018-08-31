@@ -43,7 +43,7 @@ size_t msgsize=0;//количество шифросимволов в сообщ
 void random_mutations(){
 	for (size_t x=0;x<MUTATIONS;x++){
 		size_t randQ=((size_t) rand())%(LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
-		size_t randX=((size_t) rand())%(sizeof(unsigned char)*8);
+		size_t randX=((size_t) rand())%(CHAR_BIT);
 		alphabet[randQ]^=(1<<randX);
 		reserved_alphabet[randQ]^=(1<<randX);
 	}
@@ -64,7 +64,7 @@ ptrdiff_t the_samest_letter(unsigned char* msgPtr){
 
 		for (size_t x=0;x<LENGTH_OF_SYMBOL;x++){
 			results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);		//делаем XOR по uns char'у из алфавита и из сообщения
-			for (size_t m=0;m<sizeof(unsigned char)*8;m++){			//чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква
+			for (size_t m=0;m<CHAR_BIT;m++){			//чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква
 				if (results%2){
 					whatstheworst[q]++;								//щелкаем счетчиком, если видим, что бит результата xor ненулевой
 				}
@@ -166,14 +166,14 @@ unsigned char* cipher (char* str, size_t* bytelength){
 
 
 	size_t sum_length=(res_size*LENGTH_OF_SYMBOL+rand()%LENGTH_OF_SYMBOL);
-	unsigned char* result=malloc(sum_length*sizeof(unsigned char));
+	unsigned char* result=malloc(sum_length);
 	if (result==NULL){
 		*bytelength=0;
 		return NULL;
 	}
 
 	for (size_t q=0;q<(res_size);q++){
-		memcpy(result+q*LENGTH_OF_SYMBOL,alphabet+LENGTH_OF_SYMBOL*dict_intvals[q],LENGTH_OF_SYMBOL*sizeof(char));
+		memcpy(result+q*LENGTH_OF_SYMBOL,alphabet+LENGTH_OF_SYMBOL*dict_intvals[q],LENGTH_OF_SYMBOL);
 		random_mutations();
 	}
 	free(dict_intvals);
@@ -182,14 +182,14 @@ unsigned char* cipher (char* str, size_t* bytelength){
 		result[q]=(unsigned char) rand();
 	}
 
-	*bytelength=sum_length*sizeof(char);
+	*bytelength=sum_length;
 	return result;
 }
 
 int load_message_to_module(size_t bytelength,unsigned char *message){
 	free(msg);
 	bytelength=bytelength/(LENGTH_OF_SYMBOL)*(LENGTH_OF_SYMBOL);
-	msgsize=bytelength/sizeof(char);
+	msgsize=bytelength;
 	msg=malloc(bytelength);
 	if (msg==NULL){
 		return -1;
@@ -209,15 +209,15 @@ int edits_comparator (const void* x1, const void* x2){
 }
 
 char* uncipher (int cancel_previous){
-	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL*sizeof(char))+1)*sizeof(char));
+	char* result=malloc((msgsize/(LENGTH_OF_SYMBOL+1));
 	if ((result==NULL)||(msg==NULL)){
 		free(result);
 		return NULL;
 	}
 	if (cancel_previous){
-		memcpy(reserved_alphabet,alphabet,sizeof(unsigned char)*LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
+		memcpy(reserved_alphabet,alphabet,LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
 	} else {
-		memcpy(alphabet,reserved_alphabet,sizeof(unsigned char)*LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
+		memcpy(alphabet,reserved_alphabet,LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
 	}
 	if (editlist==NULL){
 		for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
@@ -268,7 +268,7 @@ int save_alphabet(char* file_name){
 	}
 	int ints[3]={LENGTH_OF_ALPHABET,LENGTH_OF_SYMBOL,MUTATIONS};
 	fwrite(ints, sizeof(int),3,fp);
-  	fwrite(alphabet, sizeof(unsigned char), LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET*sizeof(unsigned char), fp); // записать в файл содержимое буфера
+  	fwrite(alphabet, 1, LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET, fp); // записать в файл содержимое буфера
 	fclose(fp);
 	return 0;
 }
@@ -294,14 +294,14 @@ int load_alphabet(char *file_name){
 		free(reserved_alphabet);
 		LENGTH_OF_SYMBOL=ints[1];
 		MUTATIONS=ints[2];
-		alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
-		reserved_alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
+		alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
+		reserved_alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
 		if (alphabet==NULL || reserved_alphabet==NULL){
 			fclose(fp);
 			return -1;
 		}
-		fread(alphabet,sizeof(unsigned char),LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL,fp);
-		memcpy(reserved_alphabet,alphabet,LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL*sizeof(unsigned char));
+		fread(alphabet,1,LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL,fp);
+		memcpy(reserved_alphabet,alphabet,LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
 		fclose(fp);
 		return 0;
 	} else {
@@ -417,7 +417,7 @@ int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabe
 	if (fp != NULL){
 		int ints[3]={alphabet_length,bytelength_symbol,mutations_count};
 		fwrite(ints, sizeof(int),3,fp);
-		unsigned char* random_alphabet=malloc(alphabet_length*bytelength_symbol*sizeof(unsigned char));
+		unsigned char* random_alphabet=malloc(alphabet_length*bytelength_symbol);
 		if (random_alphabet==NULL){
 			fclose(fp);
 			return -1;
@@ -428,7 +428,7 @@ int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabe
 			*random_alphabet=(unsigned char) rand();
 		}
 		random_alphabet=begRandAlph;
-		fwrite(random_alphabet,sizeof(unsigned char),alphabet_length*bytelength_symbol,fp);
+		fwrite(random_alphabet,1,alphabet_length*bytelength_symbol,fp);
 		free(random_alphabet);
 		fclose(fp);
 		return 0;
