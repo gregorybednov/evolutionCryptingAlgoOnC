@@ -1,7 +1,7 @@
 /*
 Complete C90 standard (provided by GCC 6.3.0 20170516)
 
-It compiles in C99 and C11 standards (provided by GCC 6.3.0 20170516)
+It compiles in C99 and C11 standards too (provided by GCC 6.3.0 20170516)
 
 
 !!! You should rewrite code for other rand() for more security
