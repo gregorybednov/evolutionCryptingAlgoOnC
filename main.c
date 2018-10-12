@@ -5,21 +5,27 @@
 #include <stdlib.h>
 
 int main(){
-    srand((int) time(0));
-    char s[]="Testing message for you and this program";
+    srand((int) time(NULL));
     size_t y;
+    char s[]="TESTING MESSAGE FOR YOU AND THIS PROGRAM";
     load_dictionary("eng2.dict",&y);
-    new_random_alphabet("new.balph",6,y,0);/*мутации выставлены в ноль, можно изменять.*/
+    new_random_alphabet("new.balph",1,y,0);/*number of mutations is zero, but you can change it*/
     load_alphabet("new.balph");
     size_t t;
     unsigned char* msg=cipher(s,&t);
-    load_alphabet("new.balph");/*перезагрузка алфавита допустима (как и словаря)*/
+    load_alphabet("new.balph");/*reloading alphabet is avaible as reloading dictionary*/
     load_message_to_module(t,msg);
-    /*add_edit(0,'A');*/ /*пример добавления пользовательской правки (некоторые коррективы оказываются критичными для всей дальнейшей расшифровки)*/
-    free(msg);/*обязательно удалить сообщение, созданное cipher(), как только оно перестанет быть нужным (например, будет отослано)*/
+    /*add_edit(0,'A');*/ /*example of adding user edit (some edits can be critical for uncrypting)*/
+    free(msg);/*you MUST free all memory allocated from "creating" functions: cipher() and uncipher().*/
     char *res=uncipher(1);
-    printf("%s\n",res);
-    free(res);/*аналогично со строками, созданными uncipher(), которые перестают быть нужными*/
-    end();/*обязательно отключить систему перед выходом из нее*/
+
+    printf("%s\n\n",res);
+    free(res);/*(see previous comment about freeing memory)*/
+    stop();/*call stop() when you want to 'kill' everything in module; it's REQUIRED for
+    secure and no-error stopping program*/
+
+    printf("Press ENTER to exit...\n");
+    getchar();
+
     return 0;
 }
