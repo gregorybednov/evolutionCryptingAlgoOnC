@@ -1,48 +1,58 @@
-﻿#include <stdio.h>
+/*
+Complete C90 standard (provided by GCC 6.3.0 20170516)
+
+It compiles in C99 and C11 standards (provided by GCC 6.3.0 20170516)
+
+
+!!! You should rewrite code for other rand() for more security
+(use crypting-complete versions of pseudorandom number generators).
+
+*/
+#include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include "crypting_core.h"
-#define IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT -2
-/*IMPOSSIBLE_ENCODING_POSITION_FOR_DIGIT должно не являться номером какого-либо символа-цифры в таблице кодировки.*/
+
+#include "crypting_core.h" /*only good manners in programming*/
 
 #define DIGITS_FOR_DESCRIPTION 4
-/*Сколько десятичных цифр требуется на описание файла словаря*/
+/*how many digits will be at begin of dictionary file for describing all letters in dictionary file*/
 
-/*ОПИСАНИЯ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ И ТИПОВ МОДУЛЯ*/
-/*Описания, связанные с алфавитами*/
+/*INTERFACE PART - GLOBAL VARIABLES AND IN-MODULE TYPES*/
+/*'alphabet' vars*/
 size_t LENGTH_OF_ALPHABET=0;
 size_t LENGTH_OF_SYMBOL=0;
-unsigned char* alphabet;
-unsigned char* reserved_alphabet;
+unsigned char* alphabet=NULL;
+unsigned char* reserved_alphabet=NULL;
 size_t MUTATIONS;
 
-/*Описаний, связанные со словарями*/
+/*'dict' types and vars*/
 struct dictrecord {
     int charval;
     size_t intval;
 };
-struct dictrecord* dict;
-int* revdict;
+struct dictrecord* dict=NULL;
+int* revdict=NULL;
 size_t dictsize=0;
 
-/*Раздел описаний, связанных с правками*/
-struct editrecord {/*тип "правка"*/
+/*'edit' type and global dynamic array*/
+struct editrecord {/* 'edit' keeps right (provided by reciever) interpretation of signals*/
     char read_as;
     size_t pos;
 };
-struct editrecord* editlist;/*указатель на дин. массив правок*/
-size_t editcapacity=0;/*общая ёмкость дин.массива*/
-size_t editsize=0;/*количество уже задействованных элементов*/
+struct editrecord* editlist=NULL;/*dynamic array of edits*/
+size_t editcapacity=0;/*dyn-array capacity (see C++ vector type to understand)*/
+size_t editsize=0;/*dyn-array size (see C++ vector type to understand)*/
 
-/*Описание переменных, связанных с шифрованным сообщением*/
-unsigned char* msg;/*указатель на дин. массив сообщения*/
-size_t msgsize=0;/*количество шифросимволов в сообщении.*/
+/*loaded from the outside module encrypted message*/
+unsigned char* msg=NULL;/*encrypted message pointer*/
+size_t msgsize=0;/*message array size*/
 
-/*делает MUTATIONS мутаций в алфавите*/
+/*does MUTATIONS number of random mutations (bit inversions) in all alphabet*/
 void random_mutations(){
-    for (size_t x=0;x<MUTATIONS;x++){
+    size_t x=0;
+    for (;x<MUTATIONS;x++){
         size_t randQ=((size_t) rand())%(LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
         size_t randX=((size_t) rand())%(CHAR_BIT);
         alphabet[randQ]^=(1<<randX);
@@ -50,29 +60,29 @@ void random_mutations(){
     }
 }
 
-/*возвращает номер (начиная с 0) наиболее подходящей по битам буквы*/
-ptrdiff_t the_samest_letter(unsigned char* msgPtr){
-    /*Постройка массива*/
-    size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));/*значения следует хранить для возможной расширяемости модуля
-функцией "вывести все возможные варианты" (без этой функции, в общем-то, можно было бы обойтись 2 значениями: лучшим найденным и нынешним) */
+/*returns the most similiar (by bits) letter index*/
+ptrdiff_t the_most_similiar_letter(unsigned char* msgPtr){
+    /*results array*/
+    size_t* whatstheworst=calloc(LENGTH_OF_ALPHABET,sizeof(size_t));/*the values are saved for module extesibility
+    for "return_list_by_similiarity". If not, we need only 2 values: the best and now) */
     if (whatstheworst==NULL){
         return -1;
     }
-    for (size_t q=0;q<LENGTH_OF_ALPHABET;q++){
+    size_t q,x,m;
+    for (q=0;q<LENGTH_OF_ALPHABET;q++){
         unsigned char results;
-        for (size_t x=0;x<LENGTH_OF_SYMBOL;x++){
-            results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);/*делаем XOR по uns char'у из алфавита и из сообщения
-(чем меньше битов в состоянии "1", тем больше шанс, что это та самая буква)*/
-            for (size_t m=0;m<CHAR_BIT;m++){
+        for (x=0;x<LENGTH_OF_SYMBOL;x++){
+            results=msgPtr[x]^(alphabet[q*LENGTH_OF_SYMBOL+x]);/*xor => 0 is indicator of similiarity */
+            for (m=0;m<CHAR_BIT;m++){
                 if (results%2){
-                    whatstheworst[q]++;/*щелкаем счетчиком, если видим, что бит результата xor ненулевой*/
+                    whatstheworst[q]++;/*inc, if xor-result bit is not 0, it's bad*/
                 }
-                results/=2;
+                results/=2;/*2 is base-system*/
             }
         }
     }
 
-    /*Поиск минимума*/
+    /*minimum search*/
     size_t* arrBegin=whatstheworst;
     size_t* arrEnd=whatstheworst+LENGTH_OF_ALPHABET;
     size_t* minimum=whatstheworst;
@@ -86,7 +96,7 @@ ptrdiff_t the_samest_letter(unsigned char* msgPtr){
     return result;
 }
 
-/*для бинарного поиска по отсортированному словарному "вектору"*/
+/*for binary search of sorted dictionary 'vector'*/
 struct dictrecord* dict_binary_search (int found_this_charval){
     size_t left=0;
     size_t right=dictsize;
@@ -106,23 +116,20 @@ struct dictrecord* dict_binary_search (int found_this_charval){
     }
 }
 
-/*функция для qsort*/
+/*comparator for qsort*/
 int dict_comparator(const void* x1, const void* x2){
     return  (((struct dictrecord* )x1)->charval) - (((struct dictrecord* )x2)->charval);
 }
 
-/*возвращает общее количество литер str, для которых есть соответствие в словаре.
-Кроме того, создает дин. массив ("векторного" исполнения), в который последовательно сохранён
-каждый УСПЕШНЫЙ результат по всякому символу (т.е. все обращения к словарю можно и достаточно провести тут,
-а не в самой функции шифрования), а потом обращаться к созданным заранее результатам по адресу dict_intval_results
-*/
+/*returns total number of letters in str string, which can be matched with letters in dictionary.
+CREATES dynamic array with every SUCCESS result for every letter (if the letter hasn't been found, it'll be ignored.
+So, it's converting of all text-message to indexes of alphabet 'crypting letters' ('letters' of encrypted message)*/
 size_t* new_dict_intval_results (char* str, size_t* size){
     size_t arrCapacity=0;
     size_t arrSize=0;
     size_t* dict_intval_results=malloc(1*sizeof(size_t));
     if (dict_intval_results==NULL){
-            return NULL;/*если место не выделено, то функции нет особого смысла дальше работать: программисту не будет
-            удобно рассматривать все возможные случаи, скорее всего он просто начнет обращаться с dict_intval_results*/
+            return NULL;
     }
     arrCapacity=1;
     char* strI=str;
@@ -170,14 +177,14 @@ unsigned char* cipher (char* str, size_t* bytelength){
         *bytelength=0;
         return NULL;
     }
-
-    for (size_t q=0;q<(res_size);q++){
+    size_t q=0;
+    for (;q<(res_size);q++){
         memcpy(result+q*LENGTH_OF_SYMBOL,alphabet+LENGTH_OF_SYMBOL*dict_intvals[q],LENGTH_OF_SYMBOL);
         random_mutations();
     }
     free(dict_intvals);
 
-    for (size_t q=res_size*LENGTH_OF_SYMBOL;q<sum_length;q++){
+    for (q=res_size*LENGTH_OF_SYMBOL;q<sum_length;q++){
         result[q]=(unsigned char) rand();
     }
 
@@ -208,7 +215,7 @@ int edits_comparator (const void* x1, const void* x2){
 }
 
 char* uncipher (int cancel_previous){
-    char* result=malloc((msgsize/(LENGTH_OF_SYMBOL+1)));
+    char* result=malloc((msgsize/(LENGTH_OF_SYMBOL)+1));
     if ((result==NULL)||(msg==NULL)){
         free(result);
         return NULL;
@@ -218,10 +225,12 @@ char* uncipher (int cancel_previous){
     } else {
         memcpy(alphabet,reserved_alphabet,LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET);
     }
+
     if (editlist==NULL){
-        for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
+        size_t q=0;
+        for (;q<(msgsize/LENGTH_OF_SYMBOL);q++){
             size_t num;
-            num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+            num=the_most_similiar_letter(msg+q*LENGTH_OF_SYMBOL);
             result[q]=revdict[num];
             memcpy(alphabet+num,msg+q*LENGTH_OF_SYMBOL,LENGTH_OF_SYMBOL);
         }
@@ -230,7 +239,8 @@ char* uncipher (int cancel_previous){
         size_t num;
         int flag=1;
         qsort(editlist,editsize,sizeof(struct editrecord),edits_comparator);
-        for (size_t q=0;q<(msgsize/LENGTH_OF_SYMBOL);q++){
+        size_t q=0;
+        for (;q<(msgsize/LENGTH_OF_SYMBOL);q++){
             if (flag){
                 if (((editlist+editI)->pos)==q && flag){
                     struct dictrecord* whereIsIntval=dict_binary_search((editlist+editI)->read_as);
@@ -245,10 +255,10 @@ char* uncipher (int cancel_previous){
                         flag=0;
                     }
                 } else {
-                    num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+                    num=the_most_similiar_letter(msg+q*LENGTH_OF_SYMBOL);
                 }
             } else {
-                num=the_samest_letter(msg+q*LENGTH_OF_SYMBOL);
+                num=the_most_similiar_letter(msg+q*LENGTH_OF_SYMBOL);
             }
             result[q]=revdict[num];
             memcpy(alphabet+num,msg+q*LENGTH_OF_SYMBOL,LENGTH_OF_SYMBOL);
@@ -258,8 +268,8 @@ char* uncipher (int cancel_previous){
     return result;
 }
 
-/*0, если успешно
--1, если файл не был открыт на запись*/
+/*0, if success
+-1, if file haven't opened for writing*/
 int save_alphabet(char* file_name) {
     FILE *fp;
     if ((fp = fopen(file_name, "wb")) == NULL){
@@ -267,15 +277,15 @@ int save_alphabet(char* file_name) {
     }
     int ints[3]={LENGTH_OF_ALPHABET,LENGTH_OF_SYMBOL,MUTATIONS};
     fwrite(ints, sizeof(int),3,fp);
-      fwrite(alphabet, 1, LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET, fp); /*записать в файл содержимое буфера*/
+      fwrite(alphabet, 1, LENGTH_OF_SYMBOL*LENGTH_OF_ALPHABET, fp); /*write buffer to file*/
     fclose(fp);
     return 0;
 }
 
-/*0, если успешно
--1, если файл по каким-то причинам не был открыт
--2, если в файле неверное значение длины алфавита (файл с ошибкой)
--3, если в файле неверное значение длины символа (файл с ошибкой)*/
+/*0, if success
+-1, if file haven't opened
+-2, if size of alphabet variable is incorrect (there's error in file)
+-3, if bytelength of symbol variable is incorrect (there's error in file)*/
 int load_alphabet(char *file_name){
     FILE *fp;
     if ((fp = fopen(file_name, "rb")) == NULL){
@@ -296,6 +306,8 @@ int load_alphabet(char *file_name){
         alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
         reserved_alphabet=malloc(LENGTH_OF_ALPHABET*LENGTH_OF_SYMBOL);
         if (alphabet==NULL || reserved_alphabet==NULL){
+            free(alphabet);
+            free(reserved_alphabet);
             fclose(fp);
             return -1;
         }
@@ -316,12 +328,13 @@ int load_dictionary(char* file_name, size_t* length){
         return -1;
     }
     int number[DIGITS_FOR_DESCRIPTION];
-    for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
+    size_t t=0;
+    for (;t<DIGITS_FOR_DESCRIPTION;t++){
         number[t]=getc(fp);
     }
     size_t size_of_dict=0;
-    for (size_t t=0;t<DIGITS_FOR_DESCRIPTION;t++){
-        switch(number[t]){/*жертва во имя переносимости: таблицы кодировок никак не ограничены тем, что '0'+1 это обязательно '1'*/
+    for (t=0;t<DIGITS_FOR_DESCRIPTION;t++){
+        switch(number[t]){/*for portability, for non-POSIX encoding tables*/
             case '0':
                 break;
             case '1':
@@ -353,26 +366,26 @@ int load_dictionary(char* file_name, size_t* length){
                 break;
             default:
                 fclose(fp);
-                return -2;/*ошибка: первые 4 символа не оказались цифрами*/
+                return -2;/*error: first 4 letters aren't digits*/
                 break;
         }
-        size_of_dict*=10;/*если мы всё ещё здесь, значит, результат можно смело домножать на 10.*/
+        size_of_dict*=10;/*next digit...*/
     }
-    size_of_dict/=10;/*последнее смещение было лишним*/
+    size_of_dict/=10;/*last shift was needless*/
     free(dict);
     dictsize=0;
     dict=malloc(size_of_dict*sizeof(struct dictrecord));
     if (dict==NULL){
         fclose(fp);
-        return -3;/*ошибка выделения памяти*/
+        return -3;/*malloc error*/
     }
     free(revdict);
     revdict=malloc(size_of_dict*sizeof(int));
     if (revdict==NULL){
         fclose(fp);
-        return -3;/*ошибка выделения памяти*/
+        return -3;/*malloc error*/
     }
-    for (size_t t=0;t<size_of_dict;t++){
+    for (t=0;t<size_of_dict;t++){
         (dict+t)->charval=fgetc(fp);
         (dict+t)->intval=t;
         *(revdict+t)=(dict+t)->charval;
@@ -390,7 +403,7 @@ void erase_all_editlist(){
     editsize=0;
 }
 
-void end(){
+void stop(){
     free(alphabet);
     free(reserved_alphabet);
     alphabet=NULL;
@@ -414,8 +427,8 @@ void end(){
 int new_random_alphabet(char *file_name, size_t bytelength_symbol,size_t alphabet_length,size_t mutations_count){
     FILE *fp=fopen(file_name,"wb");
     if (fp != NULL){
-        int ints[3]={alphabet_length,bytelength_symbol,mutations_count};
-        fwrite(ints, sizeof(int),3,fp);
+        size_t ints[3]={alphabet_length,bytelength_symbol,mutations_count};
+        fwrite(ints, sizeof(size_t),3,fp);
         unsigned char* random_alphabet=malloc(alphabet_length*bytelength_symbol);
         if (random_alphabet==NULL){
             fclose(fp);
